@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Muscle Matching Game</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f0f0f0;
+      margin: 0;
+      padding: 20px;
+      text-align: center;
+    }
+    h2 {
+      margin-bottom: 10px;
+    }
+    #gameContainer {
+      position: relative;
+      max-width: 800px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      /* Ensure a minimum height so canvas works correctly */
+      min-height: 400px;
+    }
+    .column {
+      width: 45%;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 2; /* Ensure boxes are above the canvas */
+    }
+    .box {
+      background: #fff;
+      border: 2px solid #ccc;
+      border-radius: 5px;
+      padding: 10px;
+      text-align: center;
+      cursor: pointer;
+      transition: background 0.3s, border 0.3s;
+      position: relative;
+    }
+    .box:hover {
+      background: #e9f5ff;
+      border-color: #66afe9;
+    }
+    .selected {
+      background: #66b3ff;
+      border-color: #339af0;
+    }
+    .matched {
+      background: #cce5ff;
+      border-color: #339af0;
+    }
+    /* Canvas fills the container behind the boxes */
+    #connectionCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1;
+      pointer-events: none;
+    }
+    .button {
+      margin: 10px;
+      padding: 10px 20px;
+      font-size: 1rem;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    #submitBtn {
+      background: #28a745;
+      color: #fff;
+    }
+    #submitBtn:hover {
+      background: #218838;
+    }
+    #resetBtn {
+      background: #dc3545;
+      color: #fff;
+    }
+    #resetBtn:hover {
+      background: #c82333;
+    }
+    #result {
+      margin-top: 20px;
+      font-size: 1.1rem;
+    }
+    .incorrect {
+      color: red;
+    }
+  </style>
+</head>
+<body>
+  <h2>Match the Muscle to its Action</h2>
+  <button id="resetBtn" class="button">Reset Game</button>
+  <div id="gameContainer">
+    <div id="muscleColumn" class="column"></div>
+    <div id="actionColumn" class="column"></div>
+    <canvas id="connectionCanvas"></canvas>
+  </div>
+  <button id="submitBtn" class="button">Submit</button>
+  <div id="result"></div>
+
+  <script>
+    const muscleActions = {
+      "BICEPS": "Flexion & supination of forearm - bend arm",
+      "TRICEPS": "Extension of forearm & extension of shoulder - straighten arm",
+      "DELTOID": "Abduction, flexion & extension of shoulder – to lift and move arms upward",
+      "TRAPEZIUS": "Adduction of scapula – to help lift the arm to the side, pull head back, and shrug shoulders",
+      "RHOMBOIDS": "Adduction & downward rotation of scapula",
+      "PECTORALS": "Adduction of humerus & flexion - to push away, pull arms inward",
+      "LATISSIMUS DORSI": "Extension, rotation & adduction – pull arms toward you",
+      "RECTUS ABDOMINUS": "Trunk flexion - bend trunk",
+      "OBLIQUE ABDOMINALS": "Trunk rotation - twist",
+      "GLUTEALS": "Extension & outward rotation of hip",
+      "QUADRICEPS": "Hip flexion & lower leg extension - straighten leg at knee",
+      "HAMSTRINGS": "Hip extension & lower leg flexion - bend knee",
+      "GASTROCNEMIUS": "Knee flexion & plantar flexion - point toes/raise heel",
+      "SOLEUS": "Plantar flexion"
+    };
+
+    let muscles, actions, matches = [];
+    let selectedMuscleEl = null;
+    let selectedActionEl = null;
+    const muscleColumn = document.getElementById("muscleColumn");
+    const actionColumn = document.getElementById("actionColumn");
+    const canvas = document.getElementById("connectionCanvas");
+    const resultDiv = document.getElementById("result");
+
+    // Setup canvas dimensions to match the container.
+    function setupCanvas() {
+      const container = document.getElementById("gameContainer");
+      canvas.width = container.clientWidth;
+      canvas.height = container.clientHeight;
+    }
+
+    // Initialize or reset the game.
+    function initializeGame() {
+      muscles = Object.keys(muscleActions).sort(() => Math.random() - 0.5);
+      actions = Object.values(muscleActions).sort(() => Math.random() - 0.5);
+      matches = [];
+      selectedMuscleEl = null;
+      selectedActionEl = null;
+      muscleColumn.innerHTML = "";
+      actionColumn.innerHTML = "";
+      resultDiv.innerHTML = "";
+      setupCanvas();
+      clearCanvas();
+
+      muscles.forEach(muscle => muscleColumn.appendChild(createBox(muscle, "muscle")));
+      actions.forEach(action => actionColumn.appendChild(createBox(action, "action")));
+    }
+
+    function createBox(text, type) {
+      const box = document.createElement("div");
+      box.classList.add("box");
+      box.innerText = text;
+      box.dataset[type] = text;
+      box.addEventListener("click", () => handleSelection(box, type));
+      return box;
+    }
+
+    // Handle selection and matching logic.
+    function handleSelection(box, type) {
+      const oppositeType = type === "muscle" ? "action" : "muscle";
+      // If the box is already matched, allow rematching by removing its match.
+      if (box.classList.contains("matched")) {
+        removeMatchForBox(box);
+        clearCanvas();
+        drawAllLines();
+      }
+      // Deselect previous selection of same type.
+      const previouslySelected = document.querySelector(`.selected[data-${type}]`);
+      if (previouslySelected && previouslySelected !== box) {
+        previouslySelected.classList.remove("selected");
+      }
+      box.classList.add("selected");
+
+      // Check if there's already a selection from the opposite side.
+      const selectedOpposite = document.querySelector(`.selected[data-${oppositeType}]`);
+      if (selectedOpposite) {
+        // Create the match.
+        createMatch(type === "muscle" ? box : selectedOpposite, type === "muscle" ? selectedOpposite : box);
+      }
+    }
+
+    // Remove an existing match if a box is reselected.
+    function removeMatchForBox(box) {
+      matches = matches.filter(match => {
+        if (match.muscleEl === box || match.actionEl === box) {
+          match.muscleEl.classList.remove("matched");
+          match.actionEl.classList.remove("matched");
+          return false;
+        }
+        return true;
+      });
+    }
+
+    // Create a match between a muscle and an action.
+    function createMatch(muscleBox, actionBox) {
+      muscleBox.classList.add("matched");
+      actionBox.classList.add("matched");
+      // Remove any prior match for these boxes if they were selected.
+      removeMatchForBox(muscleBox);
+      removeMatchForBox(actionBox);
+      matches.push({
+        muscle: muscleBox.dataset.muscle,
+        action: actionBox.dataset.action,
+        muscleEl: muscleBox,
+        actionEl: actionBox
+      });
+      // Clear any selected classes.
+      document.querySelectorAll(".selected").forEach(el => el.classList.remove("selected"));
+      clearCanvas();
+      drawAllLines();
+    }
+
+    // Clear the canvas.
+    function clearCanvas() {
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // Draw lines for all matches.
+    function drawAllLines() {
+      const ctx = canvas.getContext("2d");
+      const containerRect = document.getElementById("gameContainer").getBoundingClientRect();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#339af0";
+
+      matches.forEach(match => {
+        const rectMuscle = match.muscleEl.getBoundingClientRect();
+        const rectAction = match.actionEl.getBoundingClientRect();
+        // For muscle box (left), the connection point is at its right inside edge.
+        const x1 = rectMuscle.right - containerRect.left;
+        const y1 = rectMuscle.top - containerRect.top + rectMuscle.height / 2;
+        // For action box (right), the connection point is at its left inside edge.
+        const x2 = rectAction.left - containerRect.left;
+        const y2 = rectAction.top - containerRect.top + rectAction.height / 2;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      });
+    }
+
+    // Submission: Calculate correct, unanswered, percentage, and list incorrect answers.
+    document.getElementById("submitBtn").addEventListener("click", () => {
+      let correct = 0;
+      let incorrectMatches = [];
+      // Build a mapping from muscle to user's matched action.
+      const userMatches = {};
+      matches.forEach(match => {
+        userMatches[match.muscle] = match.action;
+      });
+      muscles.forEach(muscle => {
+        const userAction = userMatches[muscle];
+        const correctAction = muscleActions[muscle];
+        if (userAction === undefined) return; // Not answered.
+        if (userAction === correctAction) {
+          correct++;
+        } else {
+          incorrectMatches.push(`${muscle} should match with "${correctAction}"`);
+        }
+      });
+      const answered = matches.length;
+      const unanswered = muscles.length - answered;
+      const percent = answered > 0 ? ((correct / answered) * 100).toFixed(2) : 0;
+      let feedback = `<h3>${correct} correct out of ${answered} answered (${percent}%)</h3>`;
+      feedback += `<p>${unanswered} not answered</p>`;
+      if (incorrectMatches.length > 0) {
+        feedback += `<h3>Incorrect Answers:</h3>`;
+        incorrectMatches.forEach(text => {
+          feedback += `<p class="incorrect">${text}</p>`;
+        });
+      }
+      resultDiv.innerHTML = feedback;
+    });
+
+    document.getElementById("resetBtn").addEventListener("click", initializeGame);
+
+    // Initialize on load.
+    window.addEventListener("load", initializeGame);
+    // Optionally, adjust canvas on window resize.
+    window.addEventListener("resize", () => {
+      setupCanvas();
+      clearCanvas();
+      drawAllLines();
+    });
+  </script>
+</body>
+</html>
